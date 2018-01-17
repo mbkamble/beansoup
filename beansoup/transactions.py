@@ -16,13 +16,11 @@ class TransactionCompleter:
     an account chosen based on the existing transaction history for the
     main account.
 
-    It looks for existing transactions that have exactly two postings
-    and where one of the two postings is to the main account. It scores
-    each of these transactions based on the similarity of its payee and
-    narration fields to the narration field of the incomplete
-    transaction and selects the one with the highest score as a model to
-    fill in the missing posting of the incomplete transaction. Equal
-    scores are broken by selecting the most recent transaction.
+    It looks for existing transactions where one of the two postings is to the main account.
+    It scores each of these transactions based on the similarity of its payee and narration
+    fields to the narration field of the incomplete transaction and selects the one with the
+    highest score as a model to fill in the missing posting of the incomplete transaction.
+    Equal scores are broken by selecting the most recent transaction.
     """
 
     def __init__(self, existing_entries, account, min_score=0.5, max_age=None,
@@ -46,11 +44,10 @@ class TransactionCompleter:
             """A predicate asking whether an entry can be used as a model.
 
             An entry can be considered a model for incomplete transactions
-            if it is a transaction with exactly two postings and it
-            involves the main account.
+            if it involves the main account.
             """
             return (isinstance(entry, data.Transaction) and
-                    len(entry.postings) == 2 and
+                    # len(entry.postings) == 2 and
                     any(posting.account == account for posting in entry.postings))
 
         if max_age:
@@ -90,29 +87,25 @@ class TransactionCompleter:
         with a single posting to the account bound to the completer.
         The entry will be completed only if a suitable model transaction can
         be found.
-        If multiple model transactions are found that balance the transaction
-        against different account, the missing posting will be flagged for
-        review.
 
         Args:
           entry: The entry to be completed.
         Returns: True is the entry was completed; False, otherwise.
         """
         if (isinstance(entry, data.Transaction) and
-                len(entry.postings) == 1 and
-                entry.postings[0].account == self.account):
+            len(entry.postings) == 1 and
+            entry.postings[0].account == self.account):
             model_txn, model_accounts = self.find_best_model(entry)
             if model_txn:
-                # If past transactions similar to this one were posted against
-                # different accounts, flag the posting in the new entry.
-                flag = flags.FLAG_WARNING if len(model_accounts) > 1 else None
                 # Add the missing posting to balance the transaction
-                for posting in model_txn.postings:
+                # Add all postings except the last one and the one matching
+                # the account being imported into
+                for posting in model_txn.postings[:-1]:
                     if posting.account != self.account:
-                        units = -entry.postings[0].units if self.interpolated else None
-                        missing_posting = data.Posting(
-                            posting.account, units, None, None, flag, None)
-                        entry.postings.append(missing_posting)
+                        entry.postings.append(posting)
+                # leave the last entry blank so that the account auto balances
+                entry.postings.append(data.Posting(
+                    model_txn.postings[-1].account,None,None,None,None,None))
                 return True
         return False
 
